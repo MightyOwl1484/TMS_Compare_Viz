@@ -1,0 +1,141 @@
+Sub CompareTMSData()
+
+    Dim wbSource As Workbook
+    Dim wsSource As Worksheet
+    Dim wsCompare As Worksheet
+    Dim TMS1 As String
+    Dim TMS2 As String
+    Dim rngYear As Range
+    Dim rngTAI1 As Range
+    Dim rngTAI2 As Range
+    Dim chartObj As ChartObject
+    Dim chartTitle As String
+    Dim minValue As Double
+    Dim maxValue As Double
+    Dim midValue As Double
+    Dim upperMidValue As Double
+    Dim lowerMidValue As Double
+
+    ' Open the source workbook
+    Set wbSource = Workbooks.Open("C:\Users\dave2\OneDrive\Desktop\Current A-II.xlsx")
+
+    ' Set the Compare worksheet
+    Set wsCompare = ThisWorkbook.Sheets(1) ' Assuming Compare is the first sheet in the Compare workbook
+
+    ' Prompt the user to select the first TMS
+    TMS1 = InputBox("Please enter the first TMS:", "Select TMS 1")
+
+    ' Check if TMS1 exists
+    On Error Resume Next
+    Set wsSource = wbSource.Sheets(TMS1)
+    On Error GoTo 0
+    If wsSource Is Nothing Then
+        MsgBox "The TMS " & TMS1 & " does not exist. Please try again.", vbExclamation
+        Exit Sub
+    End If
+
+    ' Prompt the user to select the second TMS
+    TMS2 = InputBox("Please enter the second TMS:", "Select TMS 2")
+
+    ' Check if TMS2 exists
+    On Error Resume Next
+    Set wsSource = wbSource.Sheets(TMS2)
+    On Error GoTo 0
+    If wsSource Is Nothing Then
+        MsgBox "The TMS " & TMS2 & " does not exist. Please try again.", vbExclamation
+        Exit Sub
+    End If
+
+    ' Ensure TMS1 and TMS2 are different
+    If TMS1 = TMS2 Then
+        MsgBox "The two TMS selections must be different. Please try again.", vbExclamation
+        Exit Sub
+    End If
+
+    ' Copy the year data from G2:AJ2 from the first TMS worksheet
+    Set wsSource = wbSource.Sheets(TMS1)
+    Set rngYear = wsSource.Range("G2:AJ2")
+    rngYear.Copy Destination:=wsCompare.Range("B1")
+
+    ' Copy the TAI data from G23:AJ23 from the first TMS worksheet
+    Set rngTAI1 = wsSource.Range("G23:AJ23")
+    rngTAI1.Copy Destination:=wsCompare.Range("B2")
+    wsCompare.Range("A2").Value = TMS1 & " TAI"
+
+    ' Copy the TAI data from G23:AJ23 from the second TMS worksheet
+    Set wsSource = wbSource.Sheets(TMS2)
+    Set rngTAI2 = wsSource.Range("G23:AJ23")
+    rngTAI2.Copy Destination:=wsCompare.Range("B3")
+    wsCompare.Range("A3").Value = TMS2 & " TAI"
+
+    ' Determine minimum and maximum values for Y-axis scaling dynamically
+    minValue = Application.WorksheetFunction.Min(wsCompare.Range("B2:AE3"))
+    maxValue = Application.WorksheetFunction.Max(wsCompare.Range("B2:AE3"))
+
+    ' Calculate intermediary gridline values and round them up
+    midValue = Application.WorksheetFunction.RoundUp((maxValue + minValue) / 2, 0)
+    upperMidValue = Application.WorksheetFunction.RoundUp((maxValue + midValue) / 2, 0)
+    lowerMidValue = Application.WorksheetFunction.RoundUp((midValue + minValue) / 2, 0)
+
+    ' Apply a buffer to the min and max to make the chart more visually appealing
+    minValue = Application.WorksheetFunction.RoundDown(minValue - (maxValue - minValue) * 0.1, 0)
+    maxValue = Application.WorksheetFunction.RoundUp(maxValue + (maxValue - minValue) * 0.1, 0)
+
+    ' Create the line chart
+    Set chartObj = wsCompare.ChartObjects.Add(Left:=100, Width:=600, Top:=100, Height:=400)
+    With chartObj.Chart
+        .ChartType = xlLineMarkers ' Line with markers
+        .HasTitle = True
+        chartTitle = TMS1 & " vs " & TMS2 & " TAI"
+        .ChartTitle.Text = chartTitle
+
+        ' Set the X and Y data ranges explicitly
+        .SeriesCollection.NewSeries
+        .SeriesCollection(1).Name = wsCompare.Range("A2").Value
+        .SeriesCollection(1).XValues = wsCompare.Range("B1:AE1")
+        .SeriesCollection(1).Values = wsCompare.Range("B2:AE2")
+        
+        .SeriesCollection.NewSeries
+        .SeriesCollection(2).Name = wsCompare.Range("A3").Value
+        .SeriesCollection(2).XValues = wsCompare.Range("B1:AE1")
+        .SeriesCollection(2).Values = wsCompare.Range("B3:AE3")
+
+        ' Apply distinct solid colors to the series
+        .SeriesCollection(1).Format.Line.ForeColor.RGB = RGB(0, 112, 192) ' Blue
+        .SeriesCollection(2).Format.Line.ForeColor.RGB = RGB(192, 0, 0) ' Dark Red
+
+        ' Set the second series to use the secondary Y-axis
+        .SeriesCollection(2).AxisGroup = xlSecondary
+
+        ' Add axis titles
+        .Axes(xlCategory, xlPrimary).HasTitle = True
+        .Axes(xlCategory, xlPrimary).AxisTitle.Text = "Year"
+        .Axes(xlCategory, xlPrimary).TickLabels.Orientation = 45 ' Rotate labels for better readability
+        .Axes(xlValue, xlPrimary).HasTitle = True
+        .Axes(xlValue, xlPrimary).AxisTitle.Text = wsCompare.Range("A2").Value
+        .Axes(xlValue, xlSecondary).HasTitle = True
+        .Axes(xlValue, xlSecondary).AxisTitle.Text = wsCompare.Range("A3").Value
+
+        ' Set Y-axis scales dynamically with rounded values
+        .Axes(xlValue, xlPrimary).MinimumScale = minValue
+        .Axes(xlValue, xlPrimary).MaximumScale = maxValue
+        .Axes(xlValue, xlPrimary).MajorUnit = Application.WorksheetFunction.RoundUp((maxValue - minValue) / 4, 0)
+        
+        .Axes(xlValue, xlSecondary).MinimumScale = minValue
+        .Axes(xlValue, xlSecondary).MaximumScale = maxValue
+        .Axes(xlValue, xlSecondary).MajorUnit = Application.WorksheetFunction.RoundUp((maxValue - minValue) / 4, 0)
+
+        ' Add gridlines
+        .Axes(xlValue, xlPrimary).MajorGridlines.Format.Line.ForeColor.RGB = RGB(220, 220, 220) ' Light grey gridlines
+        .Axes(xlValue, xlSecondary).MajorGridlines.Format.Line.ForeColor.RGB = RGB(220, 220, 220) ' Light grey gridlines
+
+        ' Place the legend at the bottom
+        .Legend.Position = xlLegendPositionBottom
+        .Legend.Format.TextFrame2.TextRange.Font.Size = 12 ' Adjust legend font size for readability
+
+    End With
+
+    ' Close the source workbook
+    wbSource.Close False
+
+End Sub
